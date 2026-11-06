@@ -362,7 +362,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 
   /* short explanation of how a level is decided, plus the skill's own "why not the next level" (sk.why = {h, t}) */
   var HOW = 'The level is based on the CEFR, the European scale from A1 to C2. For each criterion in the table, what you said or wrote in class is compared with the CEFR description for that level. ' +
-    'A skill reaches a level when most of its criteria reach it. A level reflects one cycle only, so it needs to be kept in the following cycle to stay. The amount of speech or text seen also matters: with little material, the level is less certain. B1+ means strong B1: some criteria are already B2, but not most of them.';
+    'A skill reaches a level when most of its criteria reach it. A level reflects one cycle only, so it needs to be kept in the following cycle to stay. The amount of speech or text seen also matters: with little material, the level is less certain. A + level means a strong level: B1+ is strong B1 and B2+ is strong B2, with some criteria already at the next level but not most of them.';
   function how(sk) {
     var chev = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>';
     var why = (sk.why && sk.why.t) ? '<div class="why"><strong>' + esc(sk.why.h || 'Why this level') + '</strong><p>' + esc(sk.why.t) + '</p></div>' : '';
