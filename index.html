@@ -393,7 +393,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 
   /* older cycles: a 0-5 score plus free text blocks (p, check, group, words) */
   function legacyLine(s) {
-    var m = /^(\d{2}\/\d{2}(?: \(writing\))?):\s+([\s\S]*)$/.exec(String(s));
+    var m = /^((?:Class \d+, )?\d{2}\/\d{2}(?: \(writing\))?):\s+([\s\S]*)$/.exec(String(s));
     return m ? '<span class="cl">' + esc(m[1]) + ':</span> ' + esc(m[2]) : esc(s);
   }
   function legacyBlock(b) {
