@@ -254,6 +254,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .btn { border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: .5rem; padding: .3rem .75rem; font-size: .82rem; font-weight: 500; cursor: pointer; }
 .btn:hover { border-color: var(--accent); }
 
+
+
 @media (max-width: 600px) {
   .band h1 { font-size: 1.6rem; }
   .crit-head { display: none; }
@@ -279,6 +281,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
     <h1>Progress Report</h1>
     <ul class="meta" id="meta"></ul>
     <a class="admin-link" id="all-students" href="#" hidden>All students</a>
+    
   </div>
 </header>
 
@@ -294,6 +297,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
   <div id="index" hidden></div>
 </main>
 
+
+
 <script>
 (function () {
   'use strict';
@@ -307,7 +312,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   ];
   /* Cycle 5 and earlier call the same slot "Listening"; from Cycle 6 it is "Comprehension" */
   var SLOT = { comprehension: 'listening', listening: 'comprehension' };
-  var S = { db: null, canEdit: false, mode: '', docs: [], skill: 'speaking', cycle: null, unsub: null, timer: null, ready: false };
+  var S = { db: null, canEdit: false, mode: '', docs: [], skill: 'speaking', cycle: null, unsub: null, timer: null, ready: false, edit: null };
   var $ = function (id) { return document.getElementById(id); };
 
   function esc(s) {
@@ -317,15 +322,42 @@ details[open] > summary .chev { transform: rotate(90deg); }
   }
 
   /* ---------- pieces ---------- */
-  function quotes(q) {
-    return q.map(function (x) {
-      return '“' + esc(x.s) + '”' + (x.f ? ' <span class="fix">(“' + esc(x.f) + '”)</span>' : '');
+  /* Edit mode is for the teacher only. When it is on, the admin block near the end of this file puts a pencil and a
+     trash can around these texts. Otherwise E() is just the escaped text and X() is empty, so students see no change. */
+  function ON() { return !!(S.edit && S.edit.on); }
+  function E(path, text, ph) { return ON() ? S.edit.field(path, text, ph) : esc(text); }
+  function X(path, keys) { return ON() ? S.edit.trash(path, keys) : ''; }
+  function draftOf(d) { return (ON() && S.edit.drafts[d._id]) || d; }
+
+  /* b is the path of the thing inside the report, like skills.speaking.points.2 */
+  function quotes(q, b) {
+    return q.map(function (x, i) {
+      var p = b + '.q.' + i;
+      var fix = x.f ? ' <span class="fix">(“' + E(p + '.f', x.f) + '”)</span>' : '';
+      return '“' + E(p + '.s', x.s) + '”' + fix + X(p);
     }).join('; ');
   }
-  function exBody(e) {
-    var lab = e.c ? '<span class="cl">' + esc(e.c) + ':</span> ' : '';
-    var body = (e.q && e.q.length) ? quotes(e.q) : esc(e.t || '');
+  function exBody(e, b) {
+    var lab = e.c ? '<span class="cl">' + E(b + '.c', e.c) + ':</span> ' : '';
+    var body = (e.q && e.q.length) ? quotes(e.q, b) : (e.t ? E(b + '.t', e.t) : '');
     return lab + body;
+  }
+  /* the single example under a criterion is stored flat: c (label), s and f (sentence and fix) or t (text) */
+  function critEg(c, b) {
+    var lab = c.c ? '<span class="cl">' + E(b + '.c', c.c) + ':</span> ' : '';
+    var body = '';
+    if (c.s) {
+      body = '“' + E(b + '.s', c.s) + '”' + (c.f ? ' <span class="fix">(“' + E(b + '.f', c.f) + '”)</span>' : '');
+    } else if (c.t) {
+      body = E(b + '.t', c.t);
+    }
+    var eg = lab + body;
+    return eg ? eg + ((c.s || c.t) ? X(b, 'c,s,f,t') : '') : '';
+  }
+  function critChip(c, b) {
+    if (!ON()) return chip(c.lv, c.note);
+    return S.edit.select(b + '.lv', c.lv || '', [['', 'No level']].concat(S.edit.levels), 'Level') +
+      '<span class="chip-note">' + E(b + '.note', c.note || '', 'add note') + '</span>';
   }
   function parseLevel(l) {
     var m = /^(A1|A2|B1|B2|C1|C2)(\+)?$/.exec(l || '');
@@ -345,50 +377,63 @@ details[open] > summary .chev { transform: rotate(90deg); }
     if (!l) return '<span class="nolevel">No level yet</span>';
     return '<span class="chip">' + esc(l) + '</span>' + (note ? '<span class="chip-note">' + esc(note) + '</span>' : '');
   }
-  function topic(t, kind) {
+  function topic(t, kind, b) {
     var mk = kind === 'st' ? '<span class="mk st" aria-hidden="true">✔</span>' : '<span class="mk pt" aria-hidden="true">→</span>';
-    var head = kind === 'st' ? esc(t.t) : '<strong>' + esc(t.t) + '</strong>' + (t.tip ? ' ' + esc(t.tip) : '');
+    var tip = t.tip ? ' ' + E(b + '.tip', t.tip) : (ON() ? ' ' + E(b + '.tip', '', 'add tip') : '');
+    var head = kind === 'st' ? E(b + '.t', t.t) : '<strong>' + E(b + '.t', t.t) + '</strong>' + tip;
     var tag = t.tag ? '<span class="tag">' + esc(t.tag) + '</span>' : '';
-    var ex = (t.ex && t.ex.length) ? '<ul class="ex">' + t.ex.map(function (e) { return '<li>' + exBody(e) + '</li>'; }).join('') + '</ul>' : '';
-    return '<li><p class="topic-t">' + mk + '<span>' + head + tag + '</span></p>' + ex + '</li>';
+    var ex = (t.ex && t.ex.length) ? '<ul class="ex">' + t.ex.map(function (e, j) {
+      var p = b + '.ex.' + j;
+      return '<li>' + exBody(e, p) + X(p) + '</li>';
+    }).join('') + '</ul>' : '';
+    return '<li><p class="topic-t">' + mk + '<span>' + head + tag + '</span>' + X(b) + '</p>' + ex + '</li>';
   }
-  function fold(title, items, kind) {
+  function fold(title, items, kind, b) {
     if (!items || !items.length) return '';
     var chev = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>';
     return '<details class="card" open><summary>' + chev + esc(title) + '</summary><ul class="topics">' +
-      items.map(function (t) { return topic(t, kind); }).join('') + '</ul></details>';
+      items.map(function (t, i) { return topic(t, kind, b + '.' + i); }).join('') + '</ul></details>';
   }
   function cycleLabel(d) { return 'Cycle ' + d.cycle + (d.range ? ' (' + d.range + ')' : ''); }
 
   /* short explanation of how a level is decided, plus the skill's own "why not the next level" (sk.why = {h, t}) */
   var HOW = 'The level is based on the CEFR, the European scale from A1 to C2. For each criterion in the table, what you said or wrote in class is compared with the CEFR description for that level. ' +
     'A skill reaches a level when most of its criteria reach it. A level reflects one cycle only, so it needs to be kept in the following cycle to stay. The amount of speech or text seen also matters: with little material, the level is less certain. A + level means a strong level: B1+ is strong B1 and B2+ is strong B2, with some criteria already at the next level but not most of them.';
-  function how(sk) {
+  function how(sk, b) {
     var chev = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>';
-    var why = (sk.why && sk.why.t) ? '<div class="why"><strong>' + esc(sk.why.h || 'Why this level') + '</strong><p>' + esc(sk.why.t) + '</p></div>' : '';
+    var why = (sk.why && sk.why.t) ? '<div class="why"><strong>' + esc(sk.why.h || 'Why this level') + '</strong><p>' + E(b + '.why.t', sk.why.t) + '</p></div>' : '';
     return '<details class="how"><summary>' + chev + 'How your level is determined</summary><div class="how-b"><p>' + esc(HOW) + '</p>' + why +
       '<p class="src">Source: CEFR Companion Volume, chapter 5, Communicative language competences.</p></div></details>';
   }
 
   /* goals from earlier cycles (status: done, progress, no) and the goals that move to the next cycle */
   var ST = { done: ['Done', 'ok'], progress: ['Good progress', 'mid'], no: ['Not yet', 'no'] };
-  function checkin(list) {
+  function checkin(list, b) {
     if (!list || !list.length) return '';
-    return '<div class="chk"><h3>Goals from earlier cycles</h3><ul>' + list.map(function (g) {
+    return '<div class="chk"><h3>Goals from earlier cycles</h3><ul>' + list.map(function (g, i) {
+      var p = b + '.' + i;
       var s = ST[g.st] || ST.no;
-      return '<li><span class="st st-' + s[1] + '">' + s[0] + '</span><div class="chk-b"><strong>' + esc(g.g) + '</strong>' +
-        (g.from ? '<span class="tag">' + esc(g.from) + '</span>' : '') + (g.note ? '<p>' + esc(g.note) + '</p>' : '') + '</div></li>';
+      var badge = ON() ? S.edit.select(p + '.st', g.st || 'no', [['done', 'Done'], ['progress', 'Good progress'], ['no', 'Not yet']], 'Status') :
+        '<span class="st st-' + s[1] + '">' + s[0] + '</span>';
+      var note = g.note ? '<p>' + E(p + '.note', g.note) + '</p>' : (ON() ? '<p>' + E(p + '.note', '', 'add note') + '</p>' : '');
+      return '<li>' + badge + '<div class="chk-b"><strong>' + E(p + '.g', g.g) + '</strong>' +
+        (g.from ? '<span class="tag">' + esc(g.from) + '</span>' : '') + X(p) + note + '</div></li>';
     }).join('') + '</ul></div>';
   }
   /* visible note under the level when it rests on little material (sk.sample = {h, t}) */
-  function sampleNote(sk) {
+  function sampleNote(sk, b) {
     if (!sk.sample || !sk.sample.t) return '';
-    return '<div class="sample" role="note"><strong>' + esc(sk.sample.h || 'About this level') + '</strong><p>' + esc(sk.sample.t) + '</p></div>';
+    return '<div class="sample" role="note"><strong>' + esc(sk.sample.h || 'About this level') + '</strong><p>' + E(b + '.sample.t', sk.sample.t) + '</p></div>';
   }
-  function goalBox(sk) {
-    var items = (sk.goalItems && sk.goalItems.length) ? '<ul class="goal-list">' + sk.goalItems.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '';
+  function goalBox(sk, b) {
+    var gi = sk.goalItems || [];
+    var items = gi.length ? '<ul class="goal-list">' + gi.map(function (x, i) {
+      var p = b + '.goalItems.' + i;
+      return '<li>' + E(p, x) + X(p) + '</li>';
+    }).join('') + '</ul>' : '';
     if (!sk.goal && !items) return '';
-    return '<div class="goal"><strong>Goals for the next cycle</strong>' + (sk.goal ? '<p>' + esc(sk.goal) + '</p>' : '') + items + '</div>';
+    var g = sk.goal ? '<p>' + E(b + '.goal', sk.goal) + '</p>' : (ON() ? '<p>' + E(b + '.goal', '', 'add intro text') + '</p>' : '');
+    return '<div class="goal"><strong>Goals for the next cycle</strong>' + g + items + '</div>';
   }
 
   /* older cycles: a 0-5 score plus free text blocks (p, check, group, words) */
@@ -425,6 +470,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
     $('msg').hidden = which !== 'msg';
     $('report').hidden = which !== 'report';
     $('index').hidden = which !== 'index';
+    if (S.edit) S.edit.sync();
   }
   function message(title, text) {
     $('msg').innerHTML = '<strong>' + esc(title) + '</strong>' + esc(text || '');
@@ -480,10 +526,12 @@ details[open] > summary .chev { transform: rotate(90deg); }
     });
   }
   function paintPanel() {
+    if (S.edit) S.edit.flush();
     var d = current();
     if (!d) return;
     paintMeta(d);
-    var sk = (d.skills || {})[S.skill];
+    var sk = (draftOf(d).skills || {})[S.skill];
+    var pb = 'skills.' + S.skill;
     if (!sk) {
       $('panel').innerHTML = '<div class="card note"><strong>Nothing here yet</strong>This skill has no report in ' + esc(cycleLabel(d)) + '.</div>';
       return;
@@ -494,27 +542,30 @@ details[open] > summary .chev { transform: rotate(90deg); }
     }
     var h = '<section class="lvl-wrap"><div class="card lvl"><div class="lvl-top">' +
       '<span class="lvl-cycle">' + esc(cycleLabel(d)) + '</span>' +
-      '<div class="lvl-val"><b>' + esc(sk.level || '-') + '</b><small>' + esc(sk.cap || 'CEFR level') + '</small></div></div>' +
-      scale(sk.level) + sampleNote(sk) + how(sk) + '</div></section>';
+      '<div class="lvl-val"><b>' + esc(sk.level || '-') + '</b><small>' + esc(sk.cap || 'CEFR level') + '</small>' +
+      (ON() ? S.edit.select(pb + '.level', sk.level || '', S.edit.levels, 'Level') : '') + '</div></div>' +
+      scale(sk.level) + sampleNote(sk, pb) + how(sk, pb) + '</div></section>';
 
     if (sk.overall || sk.goal || (sk.checkin && sk.checkin.length)) {
-      h += '<section class="card overall"><h2 class="card-h"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>Overall</h2>' + (sk.overall ? '<p>' + esc(sk.overall) + '</p>' : '') +
-        checkin(sk.checkin) + goalBox(sk) + '</section>';
+      h += '<section class="card overall"><h2 class="card-h"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>Overall</h2>' + (sk.overall ? '<p>' + E(pb + '.overall', sk.overall) + '</p>' : '') +
+        checkin(sk.checkin, pb + '.checkin') + goalBox(sk, pb) + '</section>';
     }
     if (sk.criteria && sk.criteria.length) {
       h += '<section class="card crit" aria-label="Criteria"><div class="crit-head" aria-hidden="true"><span>Criterion</span><span>What was seen</span><span>Level</span></div><ul>' +
-        sk.criteria.map(function (c) {
-          var eg = exBody({ c: c.c, q: c.s ? [{ s: c.s, f: c.f }] : null, t: c.t });
-          return '<li class="crit-row"><div class="crit-n">' + esc(c.n) + '</div><div class="crit-d">' + esc(c.d) +
-            (eg ? '<div class="eg">' + eg + '</div>' : '') + '</div><div class="crit-l">' + chip(c.lv, c.note) + '</div></li>';
+        sk.criteria.map(function (c, i) {
+          var cb = pb + '.criteria.' + i;
+          var eg = critEg(c, cb);
+          return '<li class="crit-row"><div class="crit-n">' + esc(c.n) + '</div><div class="crit-d">' + E(cb + '.d', c.d) +
+            (eg ? '<div class="eg">' + eg + '</div>' : '') + '</div><div class="crit-l">' + critChip(c, cb) + '</div></li>';
         }).join('') + '</ul></section>';
     }
-    h += fold('Strengths', sk.strengths, 'st');
-    h += fold('Points to Develop', sk.points, 'pt');
+    h += fold('Strengths', sk.strengths, 'st', pb + '.strengths');
+    h += fold('Points to Develop', sk.points, 'pt', pb + '.points');
     $('panel').innerHTML = h;
   }
 
   function paintReport() {
+    if (S.edit && S.edit.hold()) return;
     var d = current();
     if (!d) {
       message('No report found', 'Check the link your teacher sent you.');
@@ -584,6 +635,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
     paintPanel();
   });
   window.addEventListener('hashchange', route);
+
+  
 
   /* ---------- start ---------- */
   route();

@@ -84,6 +84,9 @@ def between(s, a, b, keep_b=True):
 
 
 def make_page(src):
+    # the teacher's edit mode (pencils, trash cans, save bar) only exists in the live artifact
+    src = re.sub(r'/\* admin:start \*/.*?/\* admin:end \*/', '', src, flags=re.S)
+    src = re.sub(r'<!-- admin:start -->.*?<!-- admin:end -->', '', src, flags=re.S)
     head_end = src.index('</style>') + len('</style>')
     head, body = src[:head_end], src[head_end:]
     head = re.sub(r'<meta name="claude:viewport-fit-sides"[^>]*>\n?', '', head)
